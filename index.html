@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>聊天记录播放器 V1.7 SRT</title>
+<style>
+:root{
+  --chat-bg:#fff;
+  --left-bubble:#f4f4f6;
+  --right-bubble:#2f8df4;
+  --left-text:#171717;
+  --right-text:#fff;
+  --time-color:#8e8e9b;
+  --font-size:15px;
+  --avatar-size:42px;
+  --bubble-radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;color:#111}
+body{position:fixed;inset:0}
+#app{height:100dvh;width:100vw;display:flex;align-items:center;justify-content:center;background:#111;overflow:hidden}
+.phone{width:100vw;height:100dvh;max-width:calc(100dvh * 9 / 16);max-height:calc(100vw * 16 / 9);aspect-ratio:9/16;background:var(--chat-bg);position:relative;overflow:hidden}
+.status{height:42px;padding-top:env(safe-area-inset-top);background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.topbar{height:50px;background:#fff;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #eee;font-size:17px;font-weight:600;position:relative}
+.back{position:absolute;left:14px;font-size:22px;font-weight:400}.more{position:absolute;right:14px;font-size:22px;letter-spacing:2px}
+.chat{position:absolute;left:0;right:0;top:92px;bottom:0;overflow-y:auto;padding:24px 20px 70px;background:var(--chat-bg);scroll-behavior:smooth}
+.msg{display:flex;margin:0 0 11px;gap:9px;align-items:flex-start;animation:pop .2s ease-out both}
+.msg.right{flex-direction:row-reverse}
+.avatar{width:var(--avatar-size);height:var(--avatar-size);border-radius:50%;background:#fafafa;border:1px solid #eee;display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex:0 0 auto}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.bubble{max-width:68%;font-size:var(--font-size);font-weight:400;line-height:1.22;padding:7px 12px;border-radius:var(--bubble-radius);position:relative;word-break:break-word;white-space:pre-wrap;letter-spacing:.1px}
+.left .bubble{background:var(--left-bubble);color:var(--left-text)}
+.right .bubble{background:var(--right-bubble);color:var(--right-text)}
+body.theme-kuaishou{--chat-bg:#fff;--left-bubble:#f4f4f6;--right-bubble:#2f8df4;--left-text:#171717;--right-text:#fff;--time-color:#8e8e9b}
+body.theme-wechat{--chat-bg:#ededed;--left-bubble:#fff;--right-bubble:#95ec69;--left-text:#111;--right-text:#111;--time-color:#9a9a9a}
+body.theme-wechat .status,body.theme-wechat .topbar{background:#ededed}
+body.theme-wechat .topbar{border-bottom-color:#ddd}
+.time-row{text-align:center;color:var(--time-color);font-size:13px;line-height:1;margin:5px 0 15px}
+.unit{animation:pop .2s ease-out both}
+.unit .msg{animation:none}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.controls{position:absolute;left:10px;right:10px;bottom:10px;z-index:20;background:rgba(255,255,255,.97);border-radius:16px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);transition:.25s}
+.controls.hidden{transform:translateY(calc(100% + 14px))}
+.handle{position:absolute;right:12px;top:-42px;background:rgba(255,255,255,.97);border:0;border-radius:18px;padding:9px 12px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+textarea{width:100%;height:150px;resize:none;border:1px solid #ddd;border-radius:10px;padding:10px;font-size:14px;line-height:1.5;outline:none}
+.row{display:flex;gap:8px;margin-top:8px;align-items:center}.row>*{flex:1}
+button,input,select{height:38px;border-radius:10px;border:1px solid #ddd;background:#fff;font-size:14px;min-width:0}
+button.primary{background:#111;color:#fff;border-color:#111}button.blue{background:#2f8df4;color:#fff;border-color:#2f8df4}
+.filebtn{display:flex;align-items:center;justify-content:center;border:1px dashed #ccc;background:#fafafa;border-radius:10px;height:38px;position:relative;overflow:hidden;font-size:13px}.filebtn input{position:absolute;inset:0;opacity:0}
+.small{font-size:12px;color:#555;margin-top:7px;line-height:1.45}
+.match{margin-top:8px;padding:9px 10px;border-radius:10px;background:#f5f5f7;font-size:12px;line-height:1.55}.match.ok{background:#edf8ee;color:#217a2d}.match.bad{background:#fff0f0;color:#b42318}.match.warn{background:#fff8e6;color:#8a5a00}audio{width:100%;height:36px;margin-top:8px}.mode-note{font-size:12px;color:#666;margin-top:6px}
+.recordMode .controls,.recordMode .status,.recordMode .topbar{display:none}
+.recordMode #app{background:#000}
+.recordMode .phone{max-width:none;max-height:none;width:100vw;height:100dvh;aspect-ratio:auto;background:#000;box-shadow:none}
+.recordMode .chat{top:50%;bottom:auto;height:var(--viewport-height,44dvh);transform:translateY(-50%);padding:16px 18px;background:#fff;overflow-y:auto;border-radius:0;scroll-behavior:smooth}
+.recordMode .chat::-webkit-scrollbar{display:none}
+.recordMode .chat{scrollbar-width:none}
+.count{position:absolute;left:12px;bottom:8px;color:rgba(0,0,0,.28);font-size:12px;z-index:2}.recordMode .count{display:none}
+</style>
+</head>
+<body class="theme-kuaishou">
+<div id="app"><div class="phone" id="phone">
+  <div class="status">9:41</div>
+  <div class="topbar"><span class="back">‹</span><span id="title">聊天记录</span><span class="more">···</span></div>
+  <div class="chat" id="chat"></div><div class="count" id="count">0/0</div>
+  <div class="controls" id="controls">
+    <button class="handle" id="toggle">收起面板</button>
+    <textarea id="script" placeholder="用户：卖吗主播？
+商家：卖！
+[时间:20:02]
+用户：多少钱？
+
+多篇用 === 分隔"></textarea>
+    <div class="row"><label class="filebtn">导入聊天文案<input type="file" id="scriptFile" accept=".txt,text/plain"></label><label class="filebtn">导入 SRT<input type="file" id="srtFile" accept=".srt,application/x-subrip,text/plain"></label></div>
+    <div class="row"><label class="filebtn">导入音频文件<input type="file" id="audioFile" accept="audio/*"></label><select id="playMode"><option value="random">随机节奏模式</option><option value="srt">SRT 同步模式</option></select></div>
+    <audio id="audio" controls preload="metadata"></audio>
+    <div class="match warn" id="matchStatus">匹配检查：尚未导入 SRT 和音频。</div>
+    <div class="row"><button id="checkMatch">匹配检查</button><button class="blue" id="syncStart">开始同步播放</button></div>
+    <div class="row"><label class="filebtn">左侧头像<input type="file" id="leftAvatar" accept="image/*"></label><label class="filebtn">右侧头像<input type="file" id="rightAvatar" accept="image/*"></label></div>
+    <div class="row"><select id="theme"><option value="kuaishou">快手蓝</option><option value="wechat">微信绿</option></select><input id="chatTitle" value="聊天记录" placeholder="顶部标题"></div>
+    <div class="row"><select id="speed"><option value="430">快</option><option value="650" selected>正常</option><option value="850">慢</option><option value="1100">更慢</option></select><select id="viewportHeight"><option value="44" selected>窗口高度 44%</option><option value="50">窗口高度 50%</option><option value="54">窗口高度 54%</option></select></div>
+    <div class="row"><select id="timeMode"><option value="auto" selected>自动随机时间</option><option value="manual">只显示手动时间</option><option value="off">不显示时间</option></select><select id="fontSize"><option value="14">字体 14</option><option value="15" selected>字体 15</option><option value="16">字体 16</option><option value="17">字体 17</option></select></div>
+    <div class="row"><button class="blue" id="recordStart">开始录屏</button><button id="clear">清空</button></div>
+    <div class="small">随机节奏模式继续使用“开始录屏”。SRT 同步模式需导入聊天文案、SRT 和音频，匹配通过后点“开始同步播放”。同步模式以音频 currentTime 为唯一时间基准；拖动音频进度条会重建该时间点之前的气泡。</div>
+  </div>  </div>
+</div></div>
+<script>
+const $=s=>document.querySelector(s),chat=$('#chat'),script=$('#script'),controls=$('#controls');
+let leftImg='',rightImg='',items=[],timer=null,idx=0,playing=false,pages=[],pageIndex=0;
+let autoTimePlan=new Map(),messageOrdinal=0,recording=false;
+let srtItems=[],syncItems=[],syncRaf=0,syncCursor=0,syncActive=false,audioUrl='';
+const sample=`用户：卖吗主播？\n商家：卖！\n用户：多少钱？\n商家：？？？\n商家：不是买零食吗？\n[时间:20:02]\n用户：你说呢？\n商家：不卖不卖`;
+const STORE='chatBubblePlayerV16';
+const defaults={theme:'kuaishou',speed:'650',viewportHeight:'44',timeMode:'auto',fontSize:'15',chatTitle:'聊天记录',playMode:'random',leftImg:'',rightImg:''};
+let settings={...defaults};
+try{settings={...defaults,...JSON.parse(localStorage.getItem(STORE+'Settings')||'{}')}}catch(e){}
+script.value=localStorage.getItem(STORE+'Script')||localStorage.getItem('bubbleScriptV16')||sample;
+
+function saveSettings(){
+ settings={theme:$('#theme').value,speed:$('#speed').value,viewportHeight:$('#viewportHeight').value,timeMode:$('#timeMode').value,fontSize:$('#fontSize').value,chatTitle:$('#chatTitle').value,playMode:$('#playMode').value,leftImg,rightImg};
+ try{localStorage.setItem(STORE+'Settings',JSON.stringify(settings));localStorage.setItem(STORE+'Script',script.value)}catch(e){}
+}
+function applySettings(){
+ $('#theme').value=settings.theme;$('#speed').value=settings.speed;$('#viewportHeight').value=settings.viewportHeight;$('#timeMode').value=settings.timeMode;$('#fontSize').value=settings.fontSize;$('#chatTitle').value=settings.chatTitle;$('#playMode').value=settings.playMode||'random';
+ leftImg=settings.leftImg||'';rightImg=settings.rightImg||'';
+ document.body.classList.remove('theme-kuaishou','theme-wechat');document.body.classList.add('theme-'+settings.theme);
+ document.documentElement.style.setProperty('--font-size',settings.fontSize+'px');
+ document.documentElement.style.setProperty('--viewport-height',settings.viewportHeight+'dvh');
+ $('#title').textContent=settings.chatTitle||'聊天记录';
+}
+applySettings();
+
+function parse(text){
+ return text.split('\n').map(x=>x.trim()).filter(Boolean).map(line=>{
+   let tm=line.match(/^\[时间[:：](.+?)\]$/);if(tm)return {type:'time',text:tm[1]};
+   let m=line.match(/^(用户|商家|左|右|我|店家|客服)[:：]\s*(.*)$/);if(!m)return null;
+   let role=m[1],side=(role==='商家'||role==='右'||role==='店家'||role==='客服')?'right':'left';
+   return {type:'msg',side,text:m[2]};
+ }).filter(Boolean)
+}
+function parseTimecode(v){
+ const m=String(v).trim().match(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/);if(!m)return NaN;
+ return Number(m[1])*3600+Number(m[2])*60+Number(m[3])+Number(m[4])/1000;
+}
+function parseSRT(text){
+ const blocks=String(text).replace(/\r/g,'').trim().split(/\n{2,}/);const out=[];
+ for(const block of blocks){
+   const lines=block.split('\n').map(x=>x.trim()).filter(Boolean);if(!lines.length)continue;
+   const timeIndex=lines.findIndex(x=>x.includes('-->'));if(timeIndex<0)continue;
+   const parts=lines[timeIndex].split('-->');if(parts.length<2)continue;
+   const start=parseTimecode(parts[0]),end=parseTimecode(parts[1]);if(!Number.isFinite(start)||!Number.isFinite(end))continue;
+   const textLines=lines.slice(timeIndex+1);out.push({start,end,text:textLines.join('\n')});
+ }
+ return out;
+}
+function getChatMessages(){
+ splitPages();pageIndex=Math.max(0,Math.min(pageIndex,pages.length-1));return parse(pages[pageIndex]).filter(x=>x.type==='msg');
+}
+function buildSyncItems(){
+ const msgs=getChatMessages();syncItems=msgs.map((m,i)=>({type:'msg',side:m.side,text:srtItems[i]?.text||'',start:srtItems[i]?.start??0,end:srtItems[i]?.end??0}));
+ return {chatCount:msgs.length,srtCount:srtItems.length};
+}
+function updateMatchStatus(){
+ const box=$('#matchStatus'),{chatCount,srtCount}=buildSyncItems();let cls='warn',text='';
+ if(!srtCount)text=`匹配检查：聊天气泡 ${chatCount} 句；尚未导入 SRT。`;
+ else if(chatCount===srtCount){cls='ok';text=`匹配通过：聊天气泡 ${chatCount} 句，SRT 字幕 ${srtCount} 条，完全匹配。`;}
+ else{cls='bad';const diff=Math.abs(chatCount-srtCount),which=chatCount>srtCount?'聊天文案多':'SRT 多';text=`匹配失败：聊天气泡 ${chatCount} 句，SRT 字幕 ${srtCount} 条；${which} ${diff} 句。数量一致前禁止同步播放。`;}
+ box.className='match '+cls;box.textContent=text;return chatCount===srtCount&&chatCount>0;
+}
+function splitPages(){pages=script.value.split(/\n\s*={3,}\s*\n|\n\s*-{3,}\s*\n/).map(s=>s.trim()).filter(Boolean);if(!pages.length)pages=[script.value]}
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function avatar(side){let img=side==='left'?leftImg:rightImg,emoji=side==='left'?'🐰':'😄';return `<div class="avatar">${img?`<img src="${img}">`:emoji}</div>`}
+function pad2(n){return String(n).padStart(2,'0')}
+function formatMinutes(total){total=((total%1440)+1440)%1440;return `${pad2(Math.floor(total/60))}:${pad2(total%60)}`}
+function randInt(min,max){return min+Math.floor(Math.random()*(max-min+1))}
+function buildAutoTimePlan(list){
+ autoTimePlan=new Map();messageOrdinal=0;if($('#timeMode').value!=='auto')return;
+ const messageCount=list.filter(x=>x.type==='msg').length;if(messageCount<5)return;
+ let count=messageCount>=16?(Math.random()<0.65?2:1):1;
+ const firstMin=Math.max(3,Math.floor(messageCount*.18));
+ const firstMax=Math.max(firstMin,Math.min(messageCount-count*4,Math.floor(messageCount*.42)));
+ let positions=[randInt(firstMin,firstMax)];
+ if(count===2){const minGap=Math.max(6,Math.floor(messageCount*.28));const secondMin=positions[0]+minGap;const secondMax=Math.max(secondMin,Math.min(messageCount-2,positions[0]+Math.max(minGap+2,Math.floor(messageCount*.48))));if(secondMin<=messageCount-2)positions.push(randInt(secondMin,secondMax))}
+ let baseHour=Math.random()<0.55?randInt(13,17):randInt(18,20),clock=baseHour*60+randInt(1,54);
+ positions.forEach((pos,i)=>{if(i>0)clock+=randInt(14,32);if(clock>21*60+20)clock=21*60+randInt(0,20);autoTimePlan.set(pos,formatMinutes(clock))});
+}
+function msgHtml(o){return `<div class="msg ${o.side}">${avatar(o.side)}<div class="bubble">${escapeHtml(o.text)}</div></div>`}
+function renderUnit(o,timeText=''){
+ let unit=document.createElement('div');unit.className='unit';
+ let html=timeText&&$('#timeMode').value!=='off'?`<div class="time-row">${escapeHtml(timeText)}</div>`:'';
+ html+=msgHtml(o);unit.innerHTML=html;chat.appendChild(unit);chat.scrollTop=chat.scrollHeight;$('#count').textContent=`${Math.min(idx,items.length)}/${items.length}`;
+}
+function renderSyncBubble(o){renderUnit({type:'msg',side:o.side,text:o.text},'')}
+function rebuildToTime(time){
+ chat.innerHTML='';syncCursor=0;idx=0;for(let i=0;i<syncItems.length;i++){if(syncItems[i].start<=time+0.001){renderSyncBubble(syncItems[i]);syncCursor=i+1}else break}
+ $('#count').textContent=`${syncCursor}/${syncItems.length}`;
+}
+function syncTick(){
+ if(!syncActive)return;const audio=$('#audio'),t=audio.currentTime;
+ while(syncCursor<syncItems.length&&t+0.015>=syncItems[syncCursor].start){renderSyncBubble(syncItems[syncCursor]);syncCursor++}
+ if(audio.ended||syncCursor>=syncItems.length&&audio.paused){syncActive=false;cancelAnimationFrame(syncRaf);return}
+ syncRaf=requestAnimationFrame(syncTick);
+}
+function stopSync(){syncActive=false;cancelAnimationFrame(syncRaf);const audio=$('#audio');audio.pause()}
+function finish(){playing=false;clearTimeout(timer)}
+function run(){
+ if(!playing)return;if(idx>=items.length){finish();return}
+ let timeText='',o=items[idx++];
+ if(o.type==='time'){timeText=o.text;if(idx>=items.length){finish();return}o=items[idx++]}
+ if(o.type==='msg'){messageOrdinal++;if(!timeText&&autoTimePlan.has(messageOrdinal))timeText=autoTimePlan.get(messageOrdinal)}
+ renderUnit(o,timeText);
+ const text=o.text||'',base=Number($('#speed').value),extra=text.includes('……')||text.includes('...')?850:Math.min(text.length*20,600);
+ const jitter=.8+Math.random()*.4;timer=setTimeout(run,Math.round((base+extra)*jitter));
+}
+function preparePage(){
+ clearTimeout(timer);stopSync();splitPages();pageIndex=Math.max(0,Math.min(pageIndex,pages.length-1));items=parse(pages[pageIndex]);chat.innerHTML='';idx=0;buildAutoTimePlan(items);playing=false;messageOrdinal=0;
+ $('#title').textContent=$('#chatTitle').value||'聊天记录';document.documentElement.style.setProperty('--font-size',$('#fontSize').value+'px');document.documentElement.style.setProperty('--viewport-height',$('#viewportHeight').value+'dvh');saveSettings();
+}
+function enterRecordMode(){
+ if(recording)return;if($('#playMode').value==='srt'){startSyncPlayback();return}recording=true;preparePage();document.body.classList.add('recordMode');
+ setTimeout(()=>{if(recording){playing=true;run()}},1000);
+ if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});
+}
+function exitRecordMode(){
+ if(!recording)return;recording=false;finish();stopSync();document.body.classList.remove('recordMode');if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+}
+function startSyncPlayback(){
+ if(recording)return;$('#playMode').value='srt';saveSettings();
+ if(!updateMatchStatus()){alert($('#matchStatus').textContent);return}
+ const audio=$('#audio');if(!audio.src){alert('请先导入音频文件。');return}
+ recording=true;stopSync();chat.innerHTML='';syncCursor=0;idx=0;document.body.classList.add('recordMode');
+ audio.currentTime=0;
+ setTimeout(async()=>{if(!recording)return;try{await audio.play()}catch(e){recording=false;document.body.classList.remove('recordMode');alert('音频未能播放，请再点一次“开始同步播放”。');return}syncActive=true;syncTick()},1000);
+ if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});
+}
+$('#recordStart').onclick=enterRecordMode;
+$('#clear').onclick=()=>{finish();stopSync();chat.innerHTML='';idx=0;items=[];syncItems=[];$('#count').textContent='0/0'};
+$('#checkMatch').onclick=updateMatchStatus;$('#syncStart').onclick=startSyncPlayback;
+$('#toggle').onclick=()=>{controls.classList.toggle('hidden');$('#toggle').textContent=controls.classList.contains('hidden')?'展开面板':'收起面板'};
+chat.onclick=()=>{if(recording)exitRecordMode()};
+function readTextFile(file,cb){const r=new FileReader();r.onload=()=>cb(String(r.result||''));r.readAsText(file,'utf-8')}
+$('#scriptFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{script.value=text;try{localStorage.setItem(STORE+'Script',text)}catch(e){}updateMatchStatus()})};
+$('#srtFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{srtItems=parseSRT(text);updateMatchStatus()})};
+$('#audioFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(f);$('#audio').src=audioUrl;updateMatchStatus()};
+$('#audio').addEventListener('seeking',()=>{if(srtItems.length&&updateMatchStatus())rebuildToTime($('#audio').currentTime)});
+$('#audio').addEventListener('seeked',()=>{if(syncActive)syncTick()});
+$('#audio').addEventListener('play',()=>{if($('#playMode').value==='srt'&&updateMatchStatus()){syncActive=true;cancelAnimationFrame(syncRaf);syncTick()}});
+$('#audio').addEventListener('pause',()=>{if(!$('#audio').ended){syncActive=false;cancelAnimationFrame(syncRaf)}});
+$('#audio').addEventListener('ended',()=>{syncActive=false;cancelAnimationFrame(syncRaf)});
+function loadFile(input,side){let f=input.files&&input.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{if(side==='left')leftImg=r.result;else rightImg=r.result;saveSettings()};r.readAsDataURL(f)}
+$('#leftAvatar').onchange=e=>loadFile(e.target,'left');$('#rightAvatar').onchange=e=>loadFile(e.target,'right');
+['theme','speed','viewportHeight','timeMode','fontSize','chatTitle','playMode'].forEach(id=>$('#'+id).addEventListener('change',()=>{if(id==='theme'){document.body.classList.remove('theme-kuaishou','theme-wechat');document.body.classList.add('theme-'+$('#theme').value)}if(id==='fontSize')document.documentElement.style.setProperty('--font-size',$('#fontSize').value+'px');if(id==='viewportHeight')document.documentElement.style.setProperty('--viewport-height',$('#viewportHeight').value+'dvh');if(id==='chatTitle')$('#title').textContent=$('#chatTitle').value||'聊天记录';saveSettings()}));
+script.addEventListener('input',()=>{try{localStorage.setItem(STORE+'Script',script.value)}catch(e){}updateMatchStatus()});
+updateMatchStatus();
+</script>
+</body>
+</html>
