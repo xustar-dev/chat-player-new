@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>聊天记录播放器 V1.8 SRT 自动匹配</title>
+<title>聊天记录播放器 V1.9 SRT 无音频同步</title>
 <style>
 :root{
   --chat-bg:#fff;
@@ -50,7 +50,7 @@ button,input,select{height:38px;border-radius:10px;border:1px solid #ddd;backgro
 button.primary{background:#111;color:#fff;border-color:#111}button.blue{background:#2f8df4;color:#fff;border-color:#2f8df4}
 .filebtn{display:flex;align-items:center;justify-content:center;border:1px dashed #ccc;background:#fafafa;border-radius:10px;height:38px;position:relative;overflow:hidden;font-size:13px}.filebtn input{position:absolute;inset:0;opacity:0}
 .small{font-size:12px;color:#555;margin-top:7px;line-height:1.45}
-.match{margin-top:8px;padding:9px 10px;border-radius:10px;background:#f5f5f7;font-size:12px;line-height:1.55}.match.ok{background:#edf8ee;color:#217a2d}.match.bad{background:#fff0f0;color:#b42318}.match.warn{background:#fff8e6;color:#8a5a00}audio{width:100%;height:36px;margin-top:8px}.mode-note{font-size:12px;color:#666;margin-top:6px}
+.match{margin-top:8px;padding:9px 10px;border-radius:10px;background:#f5f5f7;font-size:12px;line-height:1.55}.match.ok{background:#edf8ee;color:#217a2d}.match.bad{background:#fff0f0;color:#b42318}.match.warn{background:#fff8e6;color:#8a5a00}.timeline{margin-top:8px;padding:8px 10px;border:1px solid #ddd;border-radius:10px;background:#fafafa;font-size:12px;color:#555;display:flex;justify-content:space-between;align-items:center}.mode-note{font-size:12px;color:#666;margin-top:6px}
 .recordMode .controls,.recordMode .status,.recordMode .topbar{display:none}
 .recordMode #app{background:#000}
 .recordMode .phone{max-width:none;max-height:none;width:100vw;height:100dvh;aspect-ratio:auto;background:#000;box-shadow:none}
@@ -74,9 +74,9 @@ button.primary{background:#111;color:#fff;border-color:#111}button.blue{backgrou
 
 多篇用 === 分隔"></textarea>
     <div class="row"><label class="filebtn">导入聊天文案<input type="file" id="scriptFile"></label><label class="filebtn">导入 SRT<input type="file" id="srtFile"></label></div>
-    <div class="row"><label class="filebtn">导入音频文件<input type="file" id="audioFile"></label><select id="playMode"><option value="random">随机节奏模式</option><option value="srt">SRT 同步模式</option></select></div>
-    <audio id="audio" controls preload="metadata"></audio>
-    <div class="match warn" id="matchStatus">匹配检查：尚未导入 SRT 和音频。</div>
+    <div class="row"><select id="playMode"><option value="random">随机节奏模式</option><option value="srt">SRT 同步模式</option></select></div>
+    <div class="timeline"><span>SRT 时间轴</span><span id="timelineTime">00:00.000</span></div>
+    <div class="match warn" id="matchStatus">匹配检查：尚未导入 SRT。</div>
     <div class="row"><button id="checkMatch">匹配检查</button><button id="autoRepair" disabled>自动修复匹配</button></div>
     <div class="row"><button class="blue" id="syncStart">开始同步播放</button></div>
     <div class="row"><label class="filebtn">左侧头像<input type="file" id="leftAvatar" accept="image/*"></label><label class="filebtn">右侧头像<input type="file" id="rightAvatar" accept="image/*"></label></div>
@@ -84,14 +84,14 @@ button.primary{background:#111;color:#fff;border-color:#111}button.blue{backgrou
     <div class="row"><select id="speed"><option value="430">快</option><option value="650" selected>正常</option><option value="850">慢</option><option value="1100">更慢</option></select><select id="viewportHeight"><option value="44" selected>窗口高度 44%</option><option value="50">窗口高度 50%</option><option value="54">窗口高度 54%</option></select></div>
     <div class="row"><select id="timeMode"><option value="auto" selected>自动随机时间</option><option value="manual">只显示手动时间</option><option value="off">不显示时间</option></select><select id="fontSize"><option value="14">字体 14</option><option value="15" selected>字体 15</option><option value="16">字体 16</option><option value="17">字体 17</option></select></div>
     <div class="row"><button class="blue" id="recordStart">开始录屏</button><button id="clear">清空</button></div>
-    <div class="small">随机节奏模式继续使用“开始录屏”。SRT 同步模式导入聊天文案、SRT 和音频后会自动检查。若剪映把一句拆成多条字幕，可点“自动修复匹配”合并相邻 SRT；修复不会改原文案角色。同步模式以音频 currentTime 为唯一时间基准；拖动音频进度条会重建该时间点之前的气泡。</div>
+    <div class="small">随机节奏模式继续使用“开始录屏”。SRT 同步模式只需导入聊天文案和 SRT；点击“开始同步播放”后，界面收起并等待 1 秒，再从 SRT 的 00:00.000 开始计时。气泡严格按每条 SRT 的开始时间出现，不需要导入音频。若剪映把一句拆成多条字幕，可点“自动修复匹配”。播放结束保持完整画面。</div>
   </div>  </div>
 </div></div>
 <script>
 const $=s=>document.querySelector(s),chat=$('#chat'),script=$('#script'),controls=$('#controls');
 let leftImg='',rightImg='',items=[],timer=null,idx=0,playing=false,pages=[],pageIndex=0;
 let autoTimePlan=new Map(),messageOrdinal=0,recording=false;
-let srtItems=[],originalSrtItems=[],syncItems=[],syncRaf=0,syncCursor=0,syncActive=false,audioUrl='',repairCandidate=null,repairApplied=false;
+let srtItems=[],originalSrtItems=[],syncItems=[],syncRaf=0,syncCursor=0,syncActive=false,syncStartMark=0,syncElapsed=0,repairCandidate=null,repairApplied=false;
 const sample=`用户：卖吗主播？\n商家：卖！\n用户：多少钱？\n商家：？？？\n商家：不是买零食吗？\n[时间:20:02]\n用户：你说呢？\n商家：不卖不卖`;
 const STORE='chatBubblePlayerV16';
 const defaults={theme:'kuaishou',speed:'650',viewportHeight:'44',timeMode:'auto',fontSize:'15',chatTitle:'聊天记录',playMode:'random',leftImg:'',rightImg:''};
@@ -219,17 +219,21 @@ function renderUnit(o,timeText=''){
  html+=msgHtml(o);unit.innerHTML=html;chat.appendChild(unit);chat.scrollTop=chat.scrollHeight;$('#count').textContent=`${Math.min(idx,items.length)}/${items.length}`;
 }
 function renderSyncBubble(o){renderUnit({type:'msg',side:o.side,text:o.text},'')}
+function formatTimelineTime(seconds){
+ const ms=Math.max(0,Math.floor(seconds*1000));const min=Math.floor(ms/60000),sec=Math.floor((ms%60000)/1000),msec=ms%1000;return `${pad2(min)}:${pad2(sec)}.${String(msec).padStart(3,'0')}`;
+}
 function rebuildToTime(time){
  chat.innerHTML='';syncCursor=0;idx=0;for(let i=0;i<syncItems.length;i++){if(syncItems[i].start<=time+0.001){renderSyncBubble(syncItems[i]);syncCursor=i+1}else break}
- $('#count').textContent=`${syncCursor}/${syncItems.length}`;
+ $('#count').textContent=`${syncCursor}/${syncItems.length}`;$('#timelineTime').textContent=formatTimelineTime(time);
 }
-function syncTick(){
- if(!syncActive)return;const audio=$('#audio'),t=audio.currentTime;
- while(syncCursor<syncItems.length&&t+0.015>=syncItems[syncCursor].start){renderSyncBubble(syncItems[syncCursor]);syncCursor++}
- if(audio.ended||syncCursor>=syncItems.length&&audio.paused){syncActive=false;cancelAnimationFrame(syncRaf);return}
+function syncTick(now){
+ if(!syncActive)return;syncElapsed=Math.max(0,(now-syncStartMark)/1000);$('#timelineTime').textContent=formatTimelineTime(syncElapsed);
+ while(syncCursor<syncItems.length&&syncElapsed+0.015>=syncItems[syncCursor].start){renderSyncBubble(syncItems[syncCursor]);syncCursor++}
+ const lastEnd=syncItems.length?syncItems[syncItems.length-1].end:0;
+ if(syncCursor>=syncItems.length&&syncElapsed>=lastEnd){syncActive=false;cancelAnimationFrame(syncRaf);$('#timelineTime').textContent=formatTimelineTime(lastEnd);return}
  syncRaf=requestAnimationFrame(syncTick);
 }
-function stopSync(){syncActive=false;cancelAnimationFrame(syncRaf);const audio=$('#audio');audio.pause()}
+function stopSync(){syncActive=false;cancelAnimationFrame(syncRaf);syncElapsed=0;$('#timelineTime').textContent='00:00.000'}
 function finish(){playing=false;clearTimeout(timer)}
 function run(){
  if(!playing)return;if(idx>=items.length){finish();return}
@@ -255,26 +259,18 @@ function exitRecordMode(){
 function startSyncPlayback(){
  if(recording)return;$('#playMode').value='srt';saveSettings();
  if(!updateMatchStatus()){alert($('#matchStatus').textContent);return}
- const audio=$('#audio');if(!audio.src){alert('请先导入音频文件。');return}
- recording=true;stopSync();chat.innerHTML='';syncCursor=0;idx=0;document.body.classList.add('recordMode');
- audio.currentTime=0;
- setTimeout(async()=>{if(!recording)return;try{await audio.play()}catch(e){recording=false;document.body.classList.remove('recordMode');alert('音频未能播放，请再点一次“开始同步播放”。');return}syncActive=true;syncTick()},1000);
+ recording=true;stopSync();chat.innerHTML='';syncCursor=0;idx=0;$('#timelineTime').textContent='00:00.000';document.body.classList.add('recordMode');
+ setTimeout(()=>{if(!recording)return;syncStartMark=performance.now();syncElapsed=0;syncActive=true;syncRaf=requestAnimationFrame(syncTick)},1000);
  if(document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});
 }
 $('#recordStart').onclick=enterRecordMode;
-$('#clear').onclick=()=>{finish();stopSync();chat.innerHTML='';idx=0;items=[];syncItems=[];$('#count').textContent='0/0'};
+$('#clear').onclick=()=>{finish();stopSync();chat.innerHTML='';idx=0;items=[];syncItems=[];$('#count').textContent='0/0';$('#timelineTime').textContent='00:00.000'};
 $('#checkMatch').onclick=updateMatchStatus;$('#autoRepair').onclick=applyAutoRepair;$('#syncStart').onclick=startSyncPlayback;
 $('#toggle').onclick=()=>{controls.classList.toggle('hidden');$('#toggle').textContent=controls.classList.contains('hidden')?'展开面板':'收起面板'};
 chat.onclick=()=>{if(recording)exitRecordMode()};
 function readTextFile(file,cb){const r=new FileReader();r.onload=()=>cb(String(r.result||''));r.readAsText(file,'utf-8')}
 $('#scriptFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{script.value=text;try{localStorage.setItem(STORE+'Script',text)}catch(e){}updateMatchStatus()})};
 $('#srtFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{originalSrtItems=parseSRT(text);srtItems=originalSrtItems.map(x=>({...x}));repairApplied=false;repairCandidate=null;updateMatchStatus()})};
-$('#audioFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(f);$('#audio').src=audioUrl;updateMatchStatus()};
-$('#audio').addEventListener('seeking',()=>{if(srtItems.length&&updateMatchStatus())rebuildToTime($('#audio').currentTime)});
-$('#audio').addEventListener('seeked',()=>{if(syncActive)syncTick()});
-$('#audio').addEventListener('play',()=>{if($('#playMode').value==='srt'&&updateMatchStatus()){syncActive=true;cancelAnimationFrame(syncRaf);syncTick()}});
-$('#audio').addEventListener('pause',()=>{if(!$('#audio').ended){syncActive=false;cancelAnimationFrame(syncRaf)}});
-$('#audio').addEventListener('ended',()=>{syncActive=false;cancelAnimationFrame(syncRaf)});
 function loadFile(input,side){let f=input.files&&input.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{if(side==='left')leftImg=r.result;else rightImg=r.result;saveSettings()};r.readAsDataURL(f)}
 $('#leftAvatar').onchange=e=>loadFile(e.target,'left');$('#rightAvatar').onchange=e=>loadFile(e.target,'right');
 ['theme','speed','viewportHeight','timeMode','fontSize','chatTitle','playMode'].forEach(id=>$('#'+id).addEventListener('change',()=>{if(id==='theme'){document.body.classList.remove('theme-kuaishou','theme-wechat');document.body.classList.add('theme-'+$('#theme').value)}if(id==='fontSize')document.documentElement.style.setProperty('--font-size',$('#fontSize').value+'px');if(id==='viewportHeight')document.documentElement.style.setProperty('--viewport-height',$('#viewportHeight').value+'dvh');if(id==='chatTitle')$('#title').textContent=$('#chatTitle').value||'聊天记录';saveSettings()}));
