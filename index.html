@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>聊天记录播放器 V1.7 SRT</title>
+<title>聊天记录播放器 V1.8 SRT 自动匹配</title>
 <style>
 :root{
   --chat-bg:#fff;
@@ -73,24 +73,25 @@ button.primary{background:#111;color:#fff;border-color:#111}button.blue{backgrou
 用户：多少钱？
 
 多篇用 === 分隔"></textarea>
-    <div class="row"><label class="filebtn">导入聊天文案<input type="file" id="scriptFile" accept=".txt,text/plain"></label><label class="filebtn">导入 SRT<input type="file" id="srtFile" accept=".srt,application/x-subrip,text/plain"></label></div>
-    <div class="row"><label class="filebtn">导入音频文件<input type="file" id="audioFile" accept="audio/*"></label><select id="playMode"><option value="random">随机节奏模式</option><option value="srt">SRT 同步模式</option></select></div>
+    <div class="row"><label class="filebtn">导入聊天文案<input type="file" id="scriptFile"></label><label class="filebtn">导入 SRT<input type="file" id="srtFile"></label></div>
+    <div class="row"><label class="filebtn">导入音频文件<input type="file" id="audioFile"></label><select id="playMode"><option value="random">随机节奏模式</option><option value="srt">SRT 同步模式</option></select></div>
     <audio id="audio" controls preload="metadata"></audio>
     <div class="match warn" id="matchStatus">匹配检查：尚未导入 SRT 和音频。</div>
-    <div class="row"><button id="checkMatch">匹配检查</button><button class="blue" id="syncStart">开始同步播放</button></div>
+    <div class="row"><button id="checkMatch">匹配检查</button><button id="autoRepair" disabled>自动修复匹配</button></div>
+    <div class="row"><button class="blue" id="syncStart">开始同步播放</button></div>
     <div class="row"><label class="filebtn">左侧头像<input type="file" id="leftAvatar" accept="image/*"></label><label class="filebtn">右侧头像<input type="file" id="rightAvatar" accept="image/*"></label></div>
     <div class="row"><select id="theme"><option value="kuaishou">快手蓝</option><option value="wechat">微信绿</option></select><input id="chatTitle" value="聊天记录" placeholder="顶部标题"></div>
     <div class="row"><select id="speed"><option value="430">快</option><option value="650" selected>正常</option><option value="850">慢</option><option value="1100">更慢</option></select><select id="viewportHeight"><option value="44" selected>窗口高度 44%</option><option value="50">窗口高度 50%</option><option value="54">窗口高度 54%</option></select></div>
     <div class="row"><select id="timeMode"><option value="auto" selected>自动随机时间</option><option value="manual">只显示手动时间</option><option value="off">不显示时间</option></select><select id="fontSize"><option value="14">字体 14</option><option value="15" selected>字体 15</option><option value="16">字体 16</option><option value="17">字体 17</option></select></div>
     <div class="row"><button class="blue" id="recordStart">开始录屏</button><button id="clear">清空</button></div>
-    <div class="small">随机节奏模式继续使用“开始录屏”。SRT 同步模式需导入聊天文案、SRT 和音频，匹配通过后点“开始同步播放”。同步模式以音频 currentTime 为唯一时间基准；拖动音频进度条会重建该时间点之前的气泡。</div>
+    <div class="small">随机节奏模式继续使用“开始录屏”。SRT 同步模式导入聊天文案、SRT 和音频后会自动检查。若剪映把一句拆成多条字幕，可点“自动修复匹配”合并相邻 SRT；修复不会改原文案角色。同步模式以音频 currentTime 为唯一时间基准；拖动音频进度条会重建该时间点之前的气泡。</div>
   </div>  </div>
 </div></div>
 <script>
 const $=s=>document.querySelector(s),chat=$('#chat'),script=$('#script'),controls=$('#controls');
 let leftImg='',rightImg='',items=[],timer=null,idx=0,playing=false,pages=[],pageIndex=0;
 let autoTimePlan=new Map(),messageOrdinal=0,recording=false;
-let srtItems=[],syncItems=[],syncRaf=0,syncCursor=0,syncActive=false,audioUrl='';
+let srtItems=[],originalSrtItems=[],syncItems=[],syncRaf=0,syncCursor=0,syncActive=false,audioUrl='',repairCandidate=null,repairApplied=false;
 const sample=`用户：卖吗主播？\n商家：卖！\n用户：多少钱？\n商家：？？？\n商家：不是买零食吗？\n[时间:20:02]\n用户：你说呢？\n商家：不卖不卖`;
 const STORE='chatBubblePlayerV16';
 const defaults={theme:'kuaishou',speed:'650',viewportHeight:'44',timeMode:'auto',fontSize:'15',chatTitle:'聊天记录',playMode:'random',leftImg:'',rightImg:''};
@@ -138,16 +139,61 @@ function parseSRT(text){
 function getChatMessages(){
  splitPages();pageIndex=Math.max(0,Math.min(pageIndex,pages.length-1));return parse(pages[pageIndex]).filter(x=>x.type==='msg');
 }
+function normalizeMatchText(text){
+ return String(text||'').toLowerCase().replace(/<[^>]*>/g,'').replace(/[\s\u3000]/g,'').replace(/[，。！？、；：“”‘’（）()【】\[\]《》…—~～,.!?;:'"`·\-]/g,'');
+}
+function levenshtein(a,b){
+ a=normalizeMatchText(a);b=normalizeMatchText(b);if(a===b)return 0;if(!a.length)return b.length;if(!b.length)return a.length;
+ let prev=Array.from({length:b.length+1},(_,i)=>i),cur=new Array(b.length+1);
+ for(let i=1;i<=a.length;i++){cur[0]=i;for(let j=1;j<=b.length;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));[prev,cur]=[cur,prev]}
+ return prev[b.length];
+}
+function textSimilarity(a,b){
+ const aa=normalizeMatchText(a),bb=normalizeMatchText(b),max=Math.max(aa.length,bb.length);return max?1-levenshtein(aa,bb)/max:1;
+}
+function buildRepairCandidate(){
+ repairCandidate=null;const chats=getChatMessages(),srts=originalSrtItems.length?originalSrtItems:srtItems;
+ const m=chats.length,n=srts.length;if(!m||n<=m||n-m>6)return null;
+ const maxMerge=Math.min(4,n-m+1),INF=1e9,dp=Array.from({length:m+1},()=>Array(n+1).fill(INF)),prev=Array.from({length:m+1},()=>Array(n+1).fill(null));dp[0][0]=0;
+ for(let i=0;i<m;i++)for(let j=0;j<=n;j++)if(dp[i][j]<INF){
+   for(let k=1;k<=maxMerge&&j+k<=n;k++){
+     const remainChat=m-i-1,remainSrt=n-(j+k);if(remainSrt<remainChat||remainSrt>remainChat*maxMerge)continue;
+     const combined=srts.slice(j,j+k).map(x=>x.text).join('');const sim=textSimilarity(chats[i].text,combined);const cost=(1-sim)+(k-1)*0.035;
+     if(dp[i][j]+cost<dp[i+1][j+k]){dp[i+1][j+k]=dp[i][j]+cost;prev[i+1][j+k]={j,k,sim,combined}}
+   }
+ }
+ if(dp[m][n]>=INF)return null;
+ let i=m,j=n,groups=[];while(i>0){const p=prev[i][j];if(!p)return null;groups.push({chatIndex:i-1,start:p.j,count:p.k,similarity:p.sim,combined:p.combined});j=p.j;i--}groups.reverse();
+ const avg=groups.reduce((a,g)=>a+g.similarity,0)/groups.length;const merged=groups.filter(g=>g.count>1);if(!merged.length||avg<0.46)return null;
+ const items=groups.map(g=>{const part=srts.slice(g.start,g.start+g.count);return {start:part[0].start,end:part[part.length-1].end,text:part.map(x=>x.text).join(''),sourceCount:g.count}});
+ return {items,groups,merged,avg,originalCount:n,targetCount:m};
+}
 function buildSyncItems(){
  const msgs=getChatMessages();syncItems=msgs.map((m,i)=>({type:'msg',side:m.side,text:srtItems[i]?.text||'',start:srtItems[i]?.start??0,end:srtItems[i]?.end??0}));
  return {chatCount:msgs.length,srtCount:srtItems.length};
 }
 function updateMatchStatus(){
- const box=$('#matchStatus'),{chatCount,srtCount}=buildSyncItems();let cls='warn',text='';
+ const box=$('#matchStatus'),repairBtn=$('#autoRepair'),{chatCount,srtCount}=buildSyncItems();let cls='warn',text='';repairBtn.disabled=true;
  if(!srtCount)text=`匹配检查：聊天气泡 ${chatCount} 句；尚未导入 SRT。`;
- else if(chatCount===srtCount){cls='ok';text=`匹配通过：聊天气泡 ${chatCount} 句，SRT 字幕 ${srtCount} 条，完全匹配。`;}
- else{cls='bad';const diff=Math.abs(chatCount-srtCount),which=chatCount>srtCount?'聊天文案多':'SRT 多';text=`匹配失败：聊天气泡 ${chatCount} 句，SRT 字幕 ${srtCount} 条；${which} ${diff} 句。数量一致前禁止同步播放。`;}
+ else if(chatCount===srtCount){
+   cls='ok';const suffix=repairApplied&&originalSrtItems.length!==srtItems.length?`（原 SRT ${originalSrtItems.length} 条，已合并为 ${srtItems.length} 条）`:'';
+   text=`匹配通过：聊天气泡 ${chatCount} 句，SRT 字幕 ${srtCount} 条${suffix}。`;
+ }else{
+   const diff=Math.abs(chatCount-srtCount),which=chatCount>srtCount?'聊天文案多':'SRT 多';
+   repairCandidate=buildRepairCandidate();
+   if(repairCandidate){
+     cls='warn';repairBtn.disabled=false;
+     const details=repairCandidate.merged.slice(0,3).map(g=>`第${g.start+1}-${g.start+g.count}条`).join('、');
+     text=`发现可修复：聊天气泡 ${chatCount} 句，SRT ${srtCount} 条；SRT 多 ${diff} 句。可尝试合并相邻字幕（${details}${repairCandidate.merged.length>3?'等':''}），预计匹配度 ${Math.round(repairCandidate.avg*100)}%。`;
+   }else{
+     cls='bad';text=`匹配失败：聊天气泡 ${chatCount} 句，SRT 字幕 ${srtCount} 条；${which} ${diff} 句。当前无法安全自动修复，请检查拆句位置。`;
+   }
+ }
  box.className='match '+cls;box.textContent=text;return chatCount===srtCount&&chatCount>0;
+}
+function applyAutoRepair(){
+ repairCandidate=buildRepairCandidate();if(!repairCandidate){alert('当前没有可安全自动修复的相邻 SRT 拆句。');return}
+ srtItems=repairCandidate.items.map(x=>({...x}));repairApplied=true;updateMatchStatus();
 }
 function splitPages(){pages=script.value.split(/\n\s*={3,}\s*\n|\n\s*-{3,}\s*\n/).map(s=>s.trim()).filter(Boolean);if(!pages.length)pages=[script.value]}
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -217,12 +263,12 @@ function startSyncPlayback(){
 }
 $('#recordStart').onclick=enterRecordMode;
 $('#clear').onclick=()=>{finish();stopSync();chat.innerHTML='';idx=0;items=[];syncItems=[];$('#count').textContent='0/0'};
-$('#checkMatch').onclick=updateMatchStatus;$('#syncStart').onclick=startSyncPlayback;
+$('#checkMatch').onclick=updateMatchStatus;$('#autoRepair').onclick=applyAutoRepair;$('#syncStart').onclick=startSyncPlayback;
 $('#toggle').onclick=()=>{controls.classList.toggle('hidden');$('#toggle').textContent=controls.classList.contains('hidden')?'展开面板':'收起面板'};
 chat.onclick=()=>{if(recording)exitRecordMode()};
 function readTextFile(file,cb){const r=new FileReader();r.onload=()=>cb(String(r.result||''));r.readAsText(file,'utf-8')}
 $('#scriptFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{script.value=text;try{localStorage.setItem(STORE+'Script',text)}catch(e){}updateMatchStatus()})};
-$('#srtFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{srtItems=parseSRT(text);updateMatchStatus()})};
+$('#srtFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;readTextFile(f,text=>{originalSrtItems=parseSRT(text);srtItems=originalSrtItems.map(x=>({...x}));repairApplied=false;repairCandidate=null;updateMatchStatus()})};
 $('#audioFile').onchange=e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(f);$('#audio').src=audioUrl;updateMatchStatus()};
 $('#audio').addEventListener('seeking',()=>{if(srtItems.length&&updateMatchStatus())rebuildToTime($('#audio').currentTime)});
 $('#audio').addEventListener('seeked',()=>{if(syncActive)syncTick()});
@@ -232,7 +278,7 @@ $('#audio').addEventListener('ended',()=>{syncActive=false;cancelAnimationFrame(
 function loadFile(input,side){let f=input.files&&input.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{if(side==='left')leftImg=r.result;else rightImg=r.result;saveSettings()};r.readAsDataURL(f)}
 $('#leftAvatar').onchange=e=>loadFile(e.target,'left');$('#rightAvatar').onchange=e=>loadFile(e.target,'right');
 ['theme','speed','viewportHeight','timeMode','fontSize','chatTitle','playMode'].forEach(id=>$('#'+id).addEventListener('change',()=>{if(id==='theme'){document.body.classList.remove('theme-kuaishou','theme-wechat');document.body.classList.add('theme-'+$('#theme').value)}if(id==='fontSize')document.documentElement.style.setProperty('--font-size',$('#fontSize').value+'px');if(id==='viewportHeight')document.documentElement.style.setProperty('--viewport-height',$('#viewportHeight').value+'dvh');if(id==='chatTitle')$('#title').textContent=$('#chatTitle').value||'聊天记录';saveSettings()}));
-script.addEventListener('input',()=>{try{localStorage.setItem(STORE+'Script',script.value)}catch(e){}updateMatchStatus()});
+script.addEventListener('input',()=>{try{localStorage.setItem(STORE+'Script',script.value)}catch(e){}if(repairApplied&&originalSrtItems.length){srtItems=originalSrtItems.map(x=>({...x}));repairApplied=false}repairCandidate=null;updateMatchStatus()});
 updateMatchStatus();
 </script>
 </body>
